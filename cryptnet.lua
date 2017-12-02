@@ -123,7 +123,7 @@ function Cryptnet:run()
 		thread.create(function() util.try(function() self:listen() end, function(err) self.logger:warn('RX thread failed: ' .. err) end) end),
 		thread.create(function() util.try(function() self.sessionManger:run() end, function(err) self.logger:warn('Session thread failed: ' .. err) end) end)
 	})
-	end
+end
 
 function Cryptnet:listen()
 	self.modem.open(MODEM_PORT)
