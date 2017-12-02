@@ -131,13 +131,14 @@ function Cryptnet:listen()
 
 	self.logger:debug('Listening...')
 	while true do
-		local event, localAddress, remoteAddress, port, dist, msg = event.pull('modem_message')
+		local _, localAddress, remoteAddress, port, dist, msg = event.pull('modem_message')
 		if localAddress == self:getLocalAddress() then
 			self.logger:debug('Got message')
 			local success, err = pcall(function()
 				local message = Message.parse(self, serialization.unserialize(msg))
 				if message then
-					self.sessionManger:handleMessage(message, resp_chan)
+					self.sessionManger:enqueueMessageRx(message)
+					event.push('cryptnet_message_rx')
 				end
 			end)
 			if not success then
@@ -148,7 +149,8 @@ function Cryptnet:listen()
 end
 
 function Cryptnet:send(msg, recipient, key)
-	self.sessionManger:enqueueMessage(msg, recipient, key)
+	self.sessionManger:enqueueMessageTx(msg, recipient, key)
+	event.push('cryptnet_message_tx')
 end
 
 function Cryptnet:onRx(msg, remoteId)

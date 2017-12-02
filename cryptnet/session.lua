@@ -4,11 +4,11 @@ local ASSOCIATION_TIMEOUT = 500
 local SESSION_TIMEOUT = 3000
 local MSG_TIMEOUT = 1000
 
-local QUEUE_LIMIT = 10
+local QUEUE_LIMIT = nil
 
 local Logger = require('logger')
 
-local DEBUG_LEVEL = Logger.DEBUG
+local DEBUG_LEVEL = Logger.INFO
 
 local util = require('util')
 local Timer = require('timer')
@@ -16,6 +16,9 @@ local Message, MessageAssoc, MessageAssocResponse, MessageData, MessageDataRespo
 local Challenge = require('cryptnet/challenge')
 local Random = require('random')
 local Queue = require('queue')
+
+local event = require('event')
+
 
 local QueueKeyPair = util.class()
 
@@ -69,10 +72,23 @@ function SessionManager:init(cryptnet)
 	self.timer = Timer.new(self.onTimerError, self)
 	self.random = Random.new()
 	self.messageQueues = {}
+	self.messageQueueRx = Queue.new()
+	self.messageQueueTx = Queue.new()
 end
 
 function SessionManager:run()
-	self.timer:run()
+	while true do
+		local event = event.pull()
+		if event == 'cryptnet_message_rx' then
+			while not self.messageQueueRx:isEmpty() do
+				self:handleMessage(self:dequeueMessageRx())
+			end
+		elseif event == 'cryptnet_message_tx' then
+			while not self.messageQueueTx:isEmpty() do
+				self:enqueueMessage(self:dequeueMessageTx())
+			end
+		end
+	end
 end
 
 function SessionManager:enqueueMessage(msg, recipient, key)
@@ -141,7 +157,7 @@ function SessionManager:setUpSession(session)
 		session:getChallengeRx():set(self.random:uint32())
 end
 
-function SessionManager:associateSession(msg, resp_chan)
+function SessionManager:associateSession(msg)
 	local keyId = msg:getKeyid()
 	local key = self.cryptnet:getKeyStore():getKey(keyId)
 	if not key then
@@ -165,17 +181,17 @@ function SessionManager:associateSession(msg, resp_chan)
 	return session
 end
 
-function SessionManager:handleMessage(msg, resp_chan)
+function SessionManager:handleMessage(msg)
 	local session = self:getSession(msg:getLocalId())
 	if msg:getType() == MessageAssoc.getType() then
 		self.logger:debug('Got association request, setting up new session')
-		session = self:associateSession(msg, resp_chan)
+		session = self:associateSession(msg)
 	end
 	if not session then
 		self.logger:warn('No session for rx message found')
 		return 
 	end
-	session:handleMessage(msg, resp_chan)
+	session:handleMessage(msg)
 end
 
 function SessionManager:getSessionForPeer(peerId)
@@ -209,7 +225,7 @@ function SessionManager:getCryptnet()
 end
 
 function SessionManager:removeSession(session)
-	return table.remove(self.sessions, session:getLocalId())
+	self.sessions[session:getLocalId()] = nil
 end
 
 function SessionManager:getSession(localId)
@@ -240,6 +256,21 @@ function SessionManager:dequeMessage(peerId)
 	return nil
 end
 
+function SessionManager:enqueueMessageRx(msg)
+	self.messageQueueRx:enqueue(msg)
+end
+
+function SessionManager:dequeueMessageRx()
+	return self.messageQueueRx:dequeue()
+end
+
+function SessionManager:enqueueMessageTx(msg, recipient, key)
+	self.messageQueueTx:enqueue({msg, recipient, key})
+end
+
+function SessionManager:dequeueMessageTx()
+	return table.unpack(self.messageQueueTx:dequeue())
+end
 
 
 
@@ -287,6 +318,8 @@ function Session:associate()
 	self:setTxIds(assoc)
 	assoc:setKeyid(self:getKey():getId())
 	assoc:setChallenge(self:getChallengeRx():get())
+	
+	self.logger:debug('Using challenge '..tostring(self:getChallengeRx():get()))
 	
 	-- Wait for handshake
 	self.state = Session.state.ASSOCIATE
@@ -429,6 +462,9 @@ function Session:handleAssoc(msg)
 	end
 		
 	self:setRemoteId(msg:getRemoteId())
+	
+	self.logger:debug(string.format('Session created, local id: %d, remote id: %d', self:getLocalId(), self:getRemoteId()))
+	
 	self:getChallengeTx():set(msg:getChallenge())
 	self:getChallengeRx():set(self.manager.random:uint32())
 

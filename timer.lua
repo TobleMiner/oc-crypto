@@ -20,19 +20,16 @@ end
 function TimerManager:init(errorCallback, ...)
 	self.timers = {}
 	self:setErrorCallback(errorCallback, ...)
-	self.logger = Logger.new('Timer', Logger.WARNING)
-end
-
-function TimerManager.run()
-
+	self.logger = Logger.new('Timer', Logger.INFO)
 end
 
 function TimerManager:setTimeout(callback, timeout, ...)
-	local cb = TimerCallback.new(callback, ...)
+	local callback = TimerCallback.new(callback, ...)
 	local id = event.timer(timeout / 1000, function()
 			self.logger:debug(string.format('Timer fired, now: %.2f', computer.uptime()))
 			local success, err = pcall(callback.call, callback)
 			if not success and self.errorCallback then
+				self.logger:warn('Timer callback failed')
 				self.errorCallback:call(id, err)
 			end			
 		end, 1)
