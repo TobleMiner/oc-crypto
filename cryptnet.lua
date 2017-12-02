@@ -3,11 +3,10 @@ aeslua = require("aeslua")
 
 local util = require('util')
 local Logger = require('logger')
+local Semaphore = require('semaphore')
 
 local SessionManger = require('cryptnet/session')
-
 local Message = util.requireAll('cryptnet/message')
-
 local KeyStore, Key = util.requireAll('cryptnet/key')
 
 local thread = require('thread')
@@ -15,7 +14,7 @@ local event = require('event')
 local serialization = require('serialization')
 
 local MODEM_PORT = 42
-
+local QUEUE_SIZE = 10
 local DEBUG_LEVEL = Logger.INFO
 
 local Callback = util.class()
@@ -109,7 +108,7 @@ function Cryptnet:init(modem, keyStore, rxCallback, ...)
 	self.keyStore = keyStore
 	self.sessionManger = SessionManger.new(self)
 	self.logger = Logger.new('cryptnet', DEBUG_LEVEL)
-	self.modem = modem
+	self.txSema = Semaphore.new(QUEUE_SIZE)
 	self:setRxCallback(rxCallback, ...)
 end
 
@@ -124,7 +123,7 @@ function Cryptnet:run()
 		thread.create(function() util.try(function() self:listen() end, function(err) self.logger:warn('RX thread failed: ' .. err) end) end),
 		thread.create(function() util.try(function() self.sessionManger:run() end, function(err) self.logger:warn('Session thread failed: ' .. err) end) end)
 	})
-end
+	end
 
 function Cryptnet:listen()
 	self.modem.open(MODEM_PORT)
@@ -149,8 +148,13 @@ function Cryptnet:listen()
 end
 
 function Cryptnet:send(msg, recipient, key)
+	self.txSema:down()
 	self.sessionManger:enqueueMessageTx(msg, recipient, key)
 	event.push('cryptnet_tx')
+end
+
+function Cryptnet:onMessageHandled()
+	self.txSema:up()
 end
 
 function Cryptnet:onRx(msg, remoteId)

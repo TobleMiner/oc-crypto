@@ -1,7 +1,7 @@
 local util = require('util')
 local Logger = require('logger')
 
-local thread = require('thread')
+local event = require('event')
 
 local Queue = util.class()
 local Element = util.class()
@@ -18,7 +18,7 @@ function Queue:init(size)
 
 	self.logger = Logger.new('queue')
 	
-	self.writers = {}
+	self.event = 'queue_'..tostring(self)
 end
 
 function Queue:isEmpty()
@@ -35,11 +35,7 @@ end
 
 function Queue:enqueue(val)
 	while self:isFull() do
-		table.insert(self.writers, thread.current())
-		local success, err = thread.current():suspend()
-		if not success then
-			self.logger:error('Failed to send writer to sleep: ' .. err)
-		end
+		event.pull(self.event)
 	end
 
 	local elem = Element.new(val, self.head, self:getTail())
@@ -49,12 +45,7 @@ function Queue:enqueue(val)
 end
 
 function Queue:wakeUpWriters()
-	while not self:isFull() and #self.writers > 0 do
-		local success, err = table.remove(self.writers, 1):resume()
-		if not success then
-			self.logger:error('Failed to wake up writer: ' .. err)
-		end
-	end
+	event.push(self.event)
 end
 
 function Queue:remove(value)

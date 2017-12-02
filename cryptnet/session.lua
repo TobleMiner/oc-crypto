@@ -4,8 +4,6 @@ local ASSOCIATION_TIMEOUT = 500
 local SESSION_TIMEOUT = 3000
 local MSG_TIMEOUT = 1000
 
-local QUEUE_LIMIT = nil
-
 local Logger = require('logger')
 
 local DEBUG_LEVEL = Logger.INFO
@@ -93,12 +91,13 @@ end
 
 function SessionManager:enqueueMessage(msg, recipient, key)
 	if not util.table_has(self.messageQueues, recipient) then
-		self.messageQueues[recipient] = QueueKeyPair.new(Queue.new(QUEUE_LIMIT), key)
+		self.messageQueues[recipient] = QueueKeyPair.new(Queue.new(), key)
 	end
 	local mtPair = MessageTimeoutPair.new(msg)
 	local timeout = self.timer:setTimeout(
 		function()
 			self.logger:debug('Message timed out')
+			self.cryptnet:onMessageHandled()
 			local queue = self.messageQueues[recipient]
 			if queue then
 				if not queue:getQueue():remove(mtPair) then
@@ -248,9 +247,9 @@ function SessionManager:dequeMessage(peerId)
 	local qkp = self.messageQueues[peerId]	
 	local mtp = qkp:getQueue():dequeue()
 	if mtp then
-		os.sleep(0.1)
 		self.logger:debug('Message dequeued, clearing timeout id: ' .. tostring(mtp:getTimeout()))
 		self.timer:clearTimeout(mtp:getTimeout())
+		self.cryptnet:onMessageHandled()
 		return mtp:getMessage()
 	end
 	return nil
