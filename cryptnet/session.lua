@@ -79,11 +79,11 @@ end
 function SessionManager:run()
 	while true do
 		local event = event.pull()
-		if event == 'cryptnet_message_rx' then
+		if event == 'cryptnet_rx' then
 			while not self.messageQueueRx:isEmpty() do
 				self:handleMessage(self:dequeueMessageRx())
 			end
-		elseif event == 'cryptnet_message_tx' then
+		elseif event == 'cryptnet_tx' then
 			while not self.messageQueueTx:isEmpty() do
 				self:enqueueMessage(self:dequeueMessageTx())
 			end

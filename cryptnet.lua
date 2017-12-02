@@ -138,7 +138,7 @@ function Cryptnet:listen()
 				local message = Message.parse(self, serialization.unserialize(msg))
 				if message then
 					self.sessionManger:enqueueMessageRx(message)
-					event.push('cryptnet_message_rx')
+					event.push('cryptnet_rx')
 				end
 			end)
 			if not success then
@@ -150,7 +150,7 @@ end
 
 function Cryptnet:send(msg, recipient, key)
 	self.sessionManger:enqueueMessageTx(msg, recipient, key)
-	event.push('cryptnet_message_tx')
+	event.push('cryptnet_tx')
 end
 
 function Cryptnet:onRx(msg, remoteId)
@@ -159,6 +159,8 @@ function Cryptnet:onRx(msg, remoteId)
 		if not success then
 			self.logger:warn('Callback failed: ' .. err)
 		end
+	else
+		event.push('cryptnet_message', remoteId, msg)
 	end
 end
 
