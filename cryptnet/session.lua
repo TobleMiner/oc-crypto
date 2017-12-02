@@ -408,6 +408,7 @@ function Session:handleMessage(msg)
 			-- TODO: implement path for verification failures
 			return
 		end
+		self.logger:debug('Verify ok')
 	end
 	
 	local stateBefore = self.state
@@ -551,6 +552,7 @@ end
 -- Session lifecycle stuff
 --------------------------
 function Session:resetTerminationTimeout()
+	self.logger:debug('Resetting timeout')
 	local timer = self.manager:getTimer()
 	if self.timerTerminate then
 		timer:clearTimeout(self.timerTerminate)

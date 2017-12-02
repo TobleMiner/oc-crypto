@@ -201,11 +201,6 @@ function MessageDataResponse:strHmac()
 	return self.type .. tostring(self.id) .. tostring(self.id_recipient) .. tostring(self.id_a) .. tostring(self.id_b) .. tostring(self.success) .. tostring(self.challenge)
 end
 
-function MessageDataResponse:calcHmac(key)
-	local strHmac = self:strHmac()
-	return sha1.hmac(key:getKey(), strHmac)
-end
-
 
 
 
