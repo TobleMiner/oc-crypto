@@ -1,4 +1,7 @@
-local util = require('util.lua')
+local util = require('util')
+local Logger = require('logger')
+
+local thread = require('thread')
 
 local Queue = util.class()
 local Element = util.class()
@@ -13,6 +16,8 @@ function Queue:init(size)
 	self.head = elem
 	self.len = 0
 
+	self.logger = Logger.new('queue')
+	
 	self.writers = {}
 end
 
@@ -30,8 +35,11 @@ end
 
 function Queue:enqueue(val)
 	while self:isFull() do
-		table.insert(self.writers, coroutine.running())
-		coroutine.yield()
+		table.insert(self.writers, thread.current())
+		local success, err = thread.current():suspend()
+		if not success then
+			self.logger:error('Failed to send writer to sleep: ' .. err)
+		end
 	end
 
 	local elem = Element.new(val, self.head, self:getTail())
@@ -42,7 +50,10 @@ end
 
 function Queue:wakeUpWriters()
 	while not self:isFull() and #self.writers > 0 do
-		coroutine.resume(table.remove(self.writers, 1))
+		local success, err = table.remove(self.writers, 1):resume()
+		if not success then
+			self.logger:error('Failed to wake up writer: ' .. err)
+		end
 	end
 end
 

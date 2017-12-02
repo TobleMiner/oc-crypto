@@ -1,5 +1,5 @@
-local util = require('util.lua')
-local Logger = require('logger.lua')
+local util = require('util')
+local Logger = require('logger')
 
 local KeyStore = util.class()
 local Key = util.class()
@@ -44,4 +44,4 @@ function Key:validFor(id)
 	return util.table_has(self.validIds, id)
 end
 
-return KeyStore, Key
+return { KeyStore, Key }

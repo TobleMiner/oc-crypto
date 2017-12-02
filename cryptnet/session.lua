@@ -1,21 +1,21 @@
 local MAX_NUM_SESSIONS = 1000
 
-local ASSOCIATION_TIMEOUT = 300
+local ASSOCIATION_TIMEOUT = 500
 local SESSION_TIMEOUT = 3000
 local MSG_TIMEOUT = 1000
 
 local QUEUE_LIMIT = 10
 
-local Logger = require('logger.lua')
+local Logger = require('logger')
 
-local DEBUG_LEVEL = Logger.INFO
+local DEBUG_LEVEL = Logger.DEBUG
 
-local util = require('util.lua')
-local Timer = require('timer.lua')
-local Message, MessageAssoc, MessageAssocResponse, MessageData, MessageDataResponse, MessageDeassoc = require('cryptnet/message.lua')
-local Challenge = require('cryptnet/challenge.lua')
-local Random = require('random.lua')
-local Queue = require('queue.lua')
+local util = require('util')
+local Timer = require('timer')
+local Message, MessageAssoc, MessageAssocResponse, MessageData, MessageDataResponse, MessageDeassoc = util.requireAll('cryptnet/message')
+local Challenge = require('cryptnet/challenge')
+local Random = require('random')
+local Queue = require('queue')
 
 local QueueKeyPair = util.class()
 
@@ -92,6 +92,7 @@ function SessionManager:enqueueMessage(msg, recipient, key)
 		end, MSG_TIMEOUT)
 	mtPair:setTimeout(timeout)
 	self.messageQueues[recipient]:getQueue():enqueue(mtPair)
+	self.logger:debug('Message queued, timeout id: ' .. tostring(timeout))
 	self:updateQueues()	
 end
 
@@ -178,7 +179,9 @@ function SessionManager:handleMessage(msg, resp_chan)
 end
 
 function SessionManager:getSessionForPeer(peerId)
+	self.logger:debug('Searching session for '..peerId)
 	for _,session in ipairs(self.sessions) do
+		self.logger:debug('Session: ' .. session:getPeerId())
 		if session:getPeerId() == peerId and not session:isDead() then
 			return session
 		end
@@ -229,6 +232,8 @@ function SessionManager:dequeMessage(peerId)
 	local qkp = self.messageQueues[peerId]	
 	local mtp = qkp:getQueue():dequeue()
 	if mtp then
+		os.sleep(0.1)
+		self.logger:debug('Message dequeued, clearing timeout id: ' .. tostring(mtp:getTimeout()))
 		self.timer:clearTimeout(mtp:getTimeout())
 		return mtp:getMessage()
 	end
@@ -240,11 +245,11 @@ end
 
 
 
-function Session:init(manager, idLocal, key, peerMac)
+function Session:init(manager, idLocal, key, peerAddress)
 	self.manager = manager
 	self.idLocal = idLocal
 	self.key = key
-	self.peerMac = peerMac
+	self.peerAddress = peerAddress
 	self.idRemote = nil
 	self.challengeRx = Challenge.new(0)
 	self.challengeTx = Challenge.new(0)
@@ -265,8 +270,8 @@ function Session:setTxIds(msg)
 	end
 	
 	-- computer ids as physical address (analogous to IP address (even though it is more like a MAC address))
-	msg:setId(self.manager:getCryptnet():getOwnId())
-	msg:setId_recipient(self.peerMac)
+	msg:setId(self.manager:getCryptnet():getLocalAddress())
+	msg:setId_recipient(self.peerAddress)
 end
 
 function Session:associate()
@@ -285,11 +290,11 @@ function Session:associate()
 	
 	-- Wait for handshake
 	self.state = Session.state.ASSOCIATE
-	
+
 	-- Kill unresponsive sessions
 	self:resetTerminationTimeout()
-	
-	self.manager:getCryptnet():sendMessage(assoc:toTable(), self.peerMac)
+
+	self.manager:getCryptnet():sendMessage(assoc:toTable(), self.peerAddress)
 end
 
 function Session:notify()
@@ -299,7 +304,7 @@ function Session:notify()
 			return
 		end
 		
-		local message = self.manager:dequeMessage(self.peerMac)
+		local message = self.manager:dequeMessage(self.peerAddress)
 		if not message then
 			return
 		end
@@ -319,7 +324,7 @@ function Session:notify()
 		
 		self.logger:debug('inc challenge TX')
 		self:getChallengeTx():inc()
-		self.manager:getCryptnet():sendMessage(data:toTable(), self.peerMac)
+		self.manager:getCryptnet():sendMessage(data:toTable(), self.peerAddress)
 	end
 end
 
@@ -344,12 +349,12 @@ function Session:isMessageSane(msg)
 		end
 	end
 		
-	if msg:getId_recipient() ~= self.manager:getCryptnet():getOwnId() then
+	if msg:getId_recipient() ~= self.manager:getCryptnet():getLocalAddress() then
 		self.logger:warn('Recipient id does not match our own id')
 		return false
 	end
 	
-	if msg:getId() ~= self.peerMac then
+	if msg:getId() ~= self.peerAddress then
 		self.logger:warn('Id does not match peer id')
 		return false
 	end
@@ -407,7 +412,7 @@ function Session:handleMessage(msg)
 			self.logger:debug('Sign '..response:getType()..' '..tostring(self:getChallengeTx():get()))
 			response:setHmac(response:calcHmac(self:getKey(), self:getChallengeTx()))
 		end
-		self.manager:getCryptnet():sendMessage(response:toTable(), self.peerMac)
+		self.manager:getCryptnet():sendMessage(response:toTable(), self.peerAddress)
 		self.logger:debug('inc challenge TX')
 		self:getChallengeTx():inc()
 	end
@@ -568,7 +573,7 @@ function Session:getKey()
 end
 
 function Session:getPeerId()
-	return self.peerMac
+	return self.peerAddress
 end
 
 function Session:isDead()

@@ -1,4 +1,4 @@
-local util = require('util.lua')
+local util = require('util')
 
 local Random = util.class()
 

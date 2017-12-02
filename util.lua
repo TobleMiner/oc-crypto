@@ -13,6 +13,17 @@ function util.table_has(tbl, key)
 	end
 end
 
+function util.requireAll(modname)
+	return table.unpack(require(modname))
+end
+
+function util.try(func, except)
+	local success, err = pcall(func)
+	if not success then
+		except(err)
+	end
+end
+
 function util.class(parent)
 	local class = {}
 	local class_mt = { __index = class 	}

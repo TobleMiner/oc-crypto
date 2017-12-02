@@ -1,10 +1,12 @@
-local Logger = require('logger.lua')
+local Logger = require('logger')
 
 local DEBUG_LEVEL = Logger.INFO
 
-local util = require('util.lua')
+local util = require('util')
 
-require("lib/base64.lua")
+require("base64")
+
+local serialization = require('serialization')
 
 
 local Message = util.class()
@@ -176,12 +178,12 @@ function MessageData:strHmac()
 end
 
 function MessageData:encrypt(key, data, iv)
-	self.data = base64_encode(aeslua.encrypt(key:getKey(), textutils.serialize(data), aeslua.AES128, aeslua.CBCMODE, iv))
+	self.data = base64_encode(aeslua.encrypt(key:getKey(), serialization.serialize(data), aeslua.AES128, aeslua.CBCMODE, iv))
 	self.iv = iv
 end
 
 function MessageData:decrypt(key)
-	return textutils.unserialize(aeslua.decrypt(key:getKey(), base64_decode(self.data), aeslua.AES128, aeslua.CBCMODE, self.iv))
+	return serialization.unserialize(aeslua.decrypt(key:getKey(), base64_decode(self.data), aeslua.AES128, aeslua.CBCMODE, self.iv))
 end
 
 
@@ -222,4 +224,4 @@ end
 
 
 
-return Message, MessageAssoc, MessageAssocResponse, MessageData, MessageDataResponse, MessageDeassoc
+return { Message, MessageAssoc, MessageAssocResponse, MessageData, MessageDataResponse, MessageDeassoc }

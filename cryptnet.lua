@@ -1,16 +1,20 @@
-os.loadAPI("lib/include")
+sha1 = require('sha1')
+aeslua = require("aeslua")
 
-sha1 = require('sha1.lua')
-aeslua = require("aeslua.lua")
+local util = require('util')
+local Logger = require('logger')
 
-local util = require('util.lua')
-local Logger = require('logger.lua')
+local SessionManger = require('cryptnet/session')
 
-local SessionManger = require('cryptnet/session.lua')
+local Message = util.requireAll('cryptnet/message')
 
-local Message = require('cryptnet/message.lua')
+local KeyStore, Key = util.requireAll('cryptnet/key')
 
-local KeyStore, Key = require('cryptnet/key.lua')
+local thread = require('thread')
+local event = require('event')
+local serialization = require('serialization')
+
+local MODEM_PORT = 42
 
 local DEBUG_LEVEL = Logger.INFO
 
@@ -100,46 +104,44 @@ local Cryptnet = util.class()
 				hmac: hmac of all other paramters + current challenge
 ]]
 
-function Cryptnet:init(side, keyStore, rxCallback, ...)
-	local modem = peripheral.wrap(side)
-	local logger_str = 'CRYPTNET ' .. side
-	
-	self.side = side
-	self.ownId = os.getComputerID()
+function Cryptnet:init(modem, keyStore, rxCallback, ...)	
+	self.modem = modem
 	self.keyStore = keyStore
 	self.sessionManger = SessionManger.new(self)
-	self.logger = Logger.new(logger_str, DEBUG_LEVEL)
+	self.logger = Logger.new('cryptnet', DEBUG_LEVEL)
 	self.modem = modem
 	self:setRxCallback(rxCallback, ...)
 end
 
-function Cryptnet:sendMessage(msg, chan)
-	self.modem.transmit(chan, self.ownId, msg)
+function Cryptnet:sendMessage(msg, remoteAddress)
+	self.logger:debug('Sending message to ' .. tostring(remoteAddress)	)
+	self.modem.send(remoteAddress, MODEM_PORT, serialization.serialize(msg))
 end
 
 function Cryptnet:run()
-	parallel.waitForAll(
-		function() self:listen() end,
-		function() self.sessionManger:run() end)
+	self.logger:debug('Starting threads')
+	thread.waitForAll({
+		thread.create(function() util.try(function() self:listen() end, function(err) self.logger:warn('RX thread failed: ' .. err) end) end),
+		thread.create(function() util.try(function() self.sessionManger:run() end, function(err) self.logger:warn('Session thread failed: ' .. err) end) end)
+	})
 end
 
 function Cryptnet:listen()
-	if not self.modem.isOpen(self.ownId) then
-		self.modem.open(self.ownId)	
-	end
-	
+	self.modem.open(MODEM_PORT)
+
 	self.logger:debug('Listening...')
 	while true do
-		local event, side, chan, resp_chan, msg, dist = os.pullEvent('modem_message')
-		if side == self.side and chan == self.ownId then
+		local event, localAddress, remoteAddress, port, dist, msg = event.pull('modem_message')
+		if localAddress == self:getLocalAddress() then
 			self.logger:debug('Got message')
-			if not pcall(function()
-				local message = Message.parse(self, msg)
+			local success, err = pcall(function()
+				local message = Message.parse(self, serialization.unserialize(msg))
 				if message then
 					self.sessionManger:handleMessage(message, resp_chan)
 				end
-			end) then
-				self.logger:warn('Message handling failed')
+			end)
+			if not success then
+				self.logger:warn('Message handling failed: ' .. err)
 			end
 		end
 	end
@@ -166,8 +168,8 @@ function Cryptnet:setRxCallback(rxCallback, ...)
 	end
 end
 
-function Cryptnet:getOwnId()
-	return self.ownId
+function Cryptnet:getLocalAddress()
+	return self.modem.address
 end
 
 function Cryptnet:getKeyStore()
@@ -178,4 +180,4 @@ function Cryptnet:getLogger()
 	return self.logger
 end
 
-return Cryptnet, KeyStore, Key
+return { Cryptnet, KeyStore, Key }

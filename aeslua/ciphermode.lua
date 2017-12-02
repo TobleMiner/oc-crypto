@@ -1,6 +1,6 @@
-local aes = require("lib/aeslua/aes.lua");
-local util = require("lib/aeslua/util.lua");
-local buffer = require("lib/aeslua/buffer.lua");
+local aes = require("aeslua/aes");
+local util = require("aeslua/util");
+local buffer = require("aeslua/buffer");
 
 local public = {};
 
@@ -23,7 +23,7 @@ function public.encryptString(key, data, modeFunction)
 		
         modeFunction(keySched, byteData, iv);
 
-        buffer.addString(encryptedData, string.char(unpack(byteData)));    
+        buffer.addString(encryptedData, string.char(table.unpack(byteData)));    
     end
     
     return buffer.toString(encryptedData);
@@ -90,7 +90,7 @@ function public.decryptString(key, data, modeFunction)
 
 		iv = modeFunction(keySched, byteData, iv);
 
-        buffer.addString(decryptedData, string.char(unpack(byteData)));
+        buffer.addString(decryptedData, string.char(table.unpack(byteData)));
     end
 
     return buffer.toString(decryptedData);    
